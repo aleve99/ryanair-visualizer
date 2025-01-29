@@ -264,15 +264,24 @@ def create_trip_details(trip_id):
     
     return details_content
 
-def get_table_data(page=0, filter_airports=None):
-    """Get paginated and filtered table data"""
-    if filter_airports:
-        filtered_trips = summary.copy()
-        for airport in filter_airports:
-            filtered_trips = filtered_trips[filtered_trips['route'].str.contains(airport)]
-    else:
-        filtered_trips = summary
+@lru_cache(maxsize=128)
+def get_filtered_trips(filter_airports_tuple):
+    """Cache filtered trips results"""
+    if not filter_airports_tuple:
+        return summary
+        
+    filtered_trips = summary.copy()
+    for airport in filter_airports_tuple:
+        filtered_trips = filtered_trips[filtered_trips['route'].str.contains(airport)]
+    return filtered_trips
 
+def get_table_data(page=0, filter_airports=None):
+    """Optimized table data retrieval"""
+    # Convert filter_airports list to tuple for caching
+    filter_airports_tuple = tuple(sorted(filter_airports)) if filter_airports else ()
+    
+    filtered_trips = get_filtered_trips(filter_airports_tuple)
+    
     # If no data matches the filter, return empty data
     if filtered_trips.empty:
         return [], 0
@@ -285,7 +294,7 @@ def get_table_data(page=0, filter_airports=None):
     end_idx = start_idx + PAGE_SIZE
     page_data = filtered_trips.iloc[start_idx:end_idx]
 
-    # Format data for table
+    # Format data for table using list comprehension
     table_data = [{
         'route': row['route'],
         'total_cost': row['total_cost'],
@@ -405,7 +414,7 @@ app.layout = html.Div([
             ], className='content-row-container')
         ], className='bottom-row-container')
 
-    ], className='main-container')
+    ], className='main-container', style={'minHeight': '100vh'})
 ], className='dashboard-container')
 
 # Add this clientside callback to reset clickData
@@ -490,16 +499,27 @@ def update_table_data(selected_airports, page_current):
      Output('selected-trip-id', 'data')],
     [Input('summary-table', 'selected_rows'),
      Input('summary-table', 'data'),
-     Input('selected-airports', 'data')],
+     Input('selected-airports', 'data'),
+     Input('summary-table', 'page_current')],
     [State('selected-trip-id', 'data')],
     prevent_initial_call=False
 )
-def maintain_selection(selected_rows, current_data, selected_airports, stored_trip_id):
+def maintain_selection(selected_rows, current_data, selected_airports, page_current, stored_trip_id):
     if not current_data:
         return [], None
         
     ctx = dash.callback_context
     trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else None
+    
+    # Handle page change explicitly
+    if trigger == 'summary-table.page_current':
+        if stored_trip_id:
+            # Find the row index in current page data
+            for i, row in enumerate(current_data):
+                if row['trip_id'] == stored_trip_id:
+                    return [i], stored_trip_id
+            # If trip not found in current page, keep trip_id but clear selection
+            return [], stored_trip_id
     
     # Reset selection when filtering
     if trigger == 'selected-airports.data':
@@ -509,13 +529,13 @@ def maintain_selection(selected_rows, current_data, selected_airports, stored_tr
     if trigger == 'summary-table.selected_rows' and selected_rows:
         return selected_rows, current_data[selected_rows[0]]['trip_id']
     
-    # Handle page change - maintain stored_trip_id
+    # Default case: maintain stored_trip_id if possible
     if stored_trip_id and current_data:
         for i, row in enumerate(current_data):
             if row['trip_id'] == stored_trip_id:
                 return [i], stored_trip_id
     
-    # Default to first row if we have data
+    # Fallback to first row if we have data
     if current_data:
         return [0], current_data[0]['trip_id']
     
@@ -527,11 +547,12 @@ def maintain_selection(selected_rows, current_data, selected_airports, stored_tr
      Output('trip-summary', 'children'),
      Output('trip-details', 'children')],
     [Input('selected-trip-id', 'data'),
-     Input('selected-airports', 'data')],
+     Input('selected-airports', 'data'),
+     Input('summary-table', 'page_current')],
     [State('route-map', 'figure')],
     prevent_initial_call=False
 )
-def update_display(selected_trip_id, selected_airports, current_figure):
+def update_display(selected_trip_id, selected_airports, page_current, current_figure):
     # Get current view
     current_view = None
     if current_figure:
@@ -632,6 +653,9 @@ def no_data_figure():
     )
     
     return fig
+
+# Add this to improve initial load performance
+app.config.suppress_callback_exceptions = True
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port="8050", debug=False)
