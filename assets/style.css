@@ -1,0 +1,284 @@
+/* CSS Variables */
+:root {
+    --primary-bg: #f5f6fa;
+    --white: #ffffff;
+    --text-primary: #2c3e50;
+    --text-secondary: #34495e;
+    --text-muted: #7f8c8d;
+    
+    /* Colors */
+    --flight-bg: #e3f2fd;
+    --flight-border: #2196f3;
+    --stay-bg: #f1f8e9;
+    --stay-border: #4caf50;
+    --summary-bg: #f8f9fa;
+    
+    /* Spacing */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 15px;
+    --spacing-lg: 20px;
+    
+    /* Border radius */
+    --border-radius-sm: 4px;
+    --border-radius-md: 8px;
+    --border-radius-lg: 10px;
+    
+    /* Box shadow */
+    --shadow-default: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Reset and Base Styles */
+html, body, #react-entry-point {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Typography */
+h2, h3, h4, p {
+    margin: 0;
+    color: var(--text-primary);
+}
+
+h2 { font-size: 1.5em; }
+h3 { font-size: 1.2em; margin-bottom: var(--spacing-sm); }
+h4 { font-size: 1em; margin-bottom: var(--spacing-xs); }
+p { 
+    color: var(--text-muted);
+    margin: var(--spacing-xs) 0;
+    font-size: 0.9em;
+}
+
+/* Layout Containers */
+.dashboard-container {
+    padding: var(--spacing-lg);
+    background-color: var(--primary-bg);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+}
+
+.title-container {
+    background-color: var(--white);
+    padding: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-default);
+}
+
+.dashboard-title {
+    margin: var(--spacing-sm);
+    text-align: center;
+}
+
+.main-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    flex: 1;
+}
+
+/* Top Row Layout */
+.top-row-container {
+    display: flex;
+    gap: var(--spacing-md);
+    height: 60vh;
+}
+
+.map-box, .table-box {
+    flex: 1;
+    background-color: var(--white);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-sm);
+    box-shadow: var(--shadow-default);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Bottom Row Layout */
+.bottom-row-container {
+    background-color: var(--white);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-md);
+    box-shadow: var(--shadow-default);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+/* Trip Title Container */
+.trip-title-container {
+    text-align: center;
+    margin-bottom: var(--spacing-sm);
+}
+
+.trip-title-container h2 {
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.content-row-container {
+    display: flex;
+    gap: var(--spacing-lg);
+    align-items: stretch;
+}
+
+/* Summary Box */
+.summary-box {
+    flex: 0 0 auto;
+    background-color: var(--summary-bg);
+    padding: var(--spacing-md);
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-default);
+    min-width: 220px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+/* Carousel Styles */
+.carousel-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    position: relative;
+    padding: 0 40px;
+    min-height: 150px;
+}
+
+.trip-details-container {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.trip-details-carousel {
+    display: flex;
+    gap: var(--spacing-sm);
+    transition: transform 0.3s ease-in-out;
+}
+
+/* Detail Cards */
+.detail-card {
+    flex: 0 0 253px;
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-default);
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.3s ease-in-out;
+}
+
+.flight-card {
+    background-color: var(--flight-bg);
+    border-left: 4px solid var(--flight-border);
+}
+
+.stay-card {
+    background-color: var(--stay-bg);
+    border-left: 4px solid var(--stay-border);
+}
+
+/* Table Styles */
+.filter-info {
+    margin-bottom: var(--spacing-xs);
+    padding: var(--spacing-xs);
+    border-radius: var(--border-radius-sm);
+}
+
+.dash-table-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.dash-table-container .dash-spreadsheet-container {
+    flex: 1;
+    min-height: 0;
+}
+
+.dash-table-container .dash-spreadsheet-inner {
+    max-height: none !important;
+}
+
+.dash-table-container .dash-table-paging {
+    margin-top: auto;
+    padding: var(--spacing-sm) 0 var(--spacing-xs) 0;
+}
+
+.dash-cell {
+    padding: var(--spacing-xs) var(--spacing-sm) !important;
+}
+
+/* Map Styles */
+#route-map {
+    height: 100%;
+    width: 100%;
+}
+
+.map-container .js-plotly-plot {
+    position: relative;
+}
+
+/* Carousel Navigation */
+.carousel-arrow {
+    background-color: var(--summary-bg);
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    color: var(--text-primary);
+    box-shadow: var(--shadow-default);
+    transition: background-color 0.2s;
+    z-index: 2;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.carousel-arrow:first-child { left: 0; }
+.carousel-arrow:last-child { right: 0; }
+
+/* Fade Effects */
+.trip-details-container::before,
+.trip-details-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 20px;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.trip-details-container::before {
+    left: 0;
+    background: linear-gradient(to right, rgba(255,255,255,1), rgba(255,255,255,0));
+}
+
+.trip-details-container::after {
+    right: 0;
+    background: linear-gradient(to left, rgba(255,255,255,1), rgba(255,255,255,0));
+}
+
+.trip-details-container.has-overflow::before,
+.trip-details-container.has-overflow::after {
+    opacity: 1;
+}
