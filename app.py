@@ -417,22 +417,11 @@ app.layout = html.Div([
     ], className='main-container', style={'minHeight': '100vh'})
 ], className='dashboard-container')
 
-# Add this clientside callback to reset clickData
-app.clientside_callback(
-    """
-    function(n_clicks) {
-        return null;
-    }
-    """,
-    Output('route-map', 'clickData'),
-    Input('last-click-state', 'data'),
-    prevent_initial_call=True
-)
-
 @app.callback(
     [Output('selected-airports', 'data'),
      Output('filter-info', 'children'),
-     Output('last-click-state', 'data')],
+     Output('last-click-state', 'data'),
+     Output('route-map', 'clickData')],
     [Input('route-map', 'clickData')],
     [State('selected-airports', 'data'),
      State('last-click-state', 'data')],
@@ -477,7 +466,7 @@ def update_selected_airports(clickData, current_selection, last_click):
         ]
         filter_text = "Filtered by: " + ", ".join(airport_names)
             
-    return current_selection, filter_text, new_click_state
+    return current_selection, filter_text, new_click_state, None
 
 @app.callback(
     [Output('summary-table', 'data'),
