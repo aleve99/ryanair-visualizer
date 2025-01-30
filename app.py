@@ -470,18 +470,29 @@ def update_selected_airports(clickData, current_selection, last_click):
 
 @app.callback(
     [Output('summary-table', 'data'),
-     Output('summary-table', 'page_count')],
+     Output('summary-table', 'page_count'),
+     Output('summary-table', 'page_current')],
     [Input('selected-airports', 'data'),
      Input('summary-table', 'page_current')],
     prevent_initial_call=True
 )
 def update_table_data(selected_airports, page_current):
+    # Get the trigger that caused this callback
+    ctx = dash.callback_context
+    trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else None
+    
+    # If the trigger was selected_airports changing, reset page to 0
+    reset_page = trigger == 'selected-airports.data'
+    page_to_use = 0 if reset_page else (page_current or 0)
+    
     table_data, total_rows = get_table_data(
-        page=page_current or 0,
+        page=page_to_use,
         filter_airports=selected_airports
     )
     page_count = max(1, -(-total_rows // PAGE_SIZE))
-    return table_data, page_count
+    
+    # Return the new page number (0) when filtering, otherwise keep current page
+    return table_data, page_count, 0 if reset_page else dash.no_update
 
 @app.callback(
     [Output('summary-table', 'selected_rows'),
@@ -502,7 +513,7 @@ def maintain_selection(selected_rows, current_data, selected_airports, page_curr
     
     # Handle page change explicitly
     if trigger == 'summary-table.page_current':
-        if stored_trip_id:
+        if stored_trip_id is not None:
             # Find the row index in current page data
             for i, row in enumerate(current_data):
                 if row['trip_id'] == stored_trip_id:
@@ -518,10 +529,14 @@ def maintain_selection(selected_rows, current_data, selected_airports, page_curr
     if trigger == 'summary-table.selected_rows' and selected_rows:
         return selected_rows, current_data[selected_rows[0]]['trip_id']
     
+    print(stored_trip_id, current_data)
     # Default case: maintain stored_trip_id if possible
-    if stored_trip_id and current_data:
+    if stored_trip_id is not None and current_data:
+        print("ok")
         for i, row in enumerate(current_data):
+            print(i, row['trip_id'], stored_trip_id)
             if row['trip_id'] == stored_trip_id:
+                print(i, stored_trip_id)
                 return [i], stored_trip_id
     
     # Fallback to first row if we have data
