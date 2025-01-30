@@ -529,14 +529,10 @@ def maintain_selection(selected_rows, current_data, selected_airports, page_curr
     if trigger == 'summary-table.selected_rows' and selected_rows:
         return selected_rows, current_data[selected_rows[0]]['trip_id']
     
-    print(stored_trip_id, current_data)
     # Default case: maintain stored_trip_id if possible
     if stored_trip_id is not None and current_data:
-        print("ok")
         for i, row in enumerate(current_data):
-            print(i, row['trip_id'], stored_trip_id)
             if row['trip_id'] == stored_trip_id:
-                print(i, stored_trip_id)
                 return [i], stored_trip_id
     
     # Fallback to first row if we have data
