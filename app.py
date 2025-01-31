@@ -437,10 +437,6 @@ app.layout = html.Div([
     prevent_initial_call=True
 )
 def update_selected_airports(click_data, keyboard_state, current_selection, last_click):
-    # Debug prints
-    print("Click Data:", click_data)
-    print("Keyboard State:", keyboard_state)
-
     # If the user clicked outside any point (no customdata), do nothing:
     if not click_data or "points" not in click_data or not click_data["points"]:
         raise PreventUpdate
@@ -451,7 +447,6 @@ def update_selected_airports(click_data, keyboard_state, current_selection, last
 
     # Get ctrl state from keyboard state
     ctrl_pressed = keyboard_state.get('ctrl', False) if keyboard_state else False
-    print("Ctrl pressed:", ctrl_pressed)
 
     # Copy the current selections if not None:
     if current_selection is None:
