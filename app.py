@@ -253,6 +253,7 @@ AIRPORTS_DF = airports.reset_index()  # Keep a copy with the index as a column
 # Initialize the Dash app with performance settings
 app = dash.Dash(
     __name__,
+    title="Flight Trip Explorer",
     update_title=None,  # Disable "Updating..." title
     compress=True,  # Enable gzip compression
     meta_tags=[
@@ -620,9 +621,11 @@ def maintain_selection(selected_rows, current_data, selected_airports, page_curr
             # If trip not found in current page, keep trip_id but clear selection
             return [], stored_trip_id
     
-    # Reset selection when filtering
-    if trigger == 'selected-airports.data':
-        return [0], current_data[0]['trip_id'] if current_data else None
+    # Reset selection when filtering or when data becomes available after being empty
+    if trigger == 'selected-airports.data' or (trigger == 'summary-table.data' and stored_trip_id is None):
+        if current_data:  # Only if we have data
+            return [0], current_data[0]['trip_id']
+        return [], None
     
     # Handle explicit row selection
     if trigger == 'summary-table.selected_rows' and selected_rows:
@@ -646,11 +649,12 @@ def maintain_selection(selected_rows, current_data, selected_airports, page_curr
      Output('trip-summary', 'children'),
      Output('trip-details', 'children')],
     [Input('selected-trip-id', 'data'),
-     Input('selected-airports', 'data')],
+     Input('selected-airports', 'data'),
+     Input('summary-table', 'data')],  # Add table data as input to detect when data becomes available
     [State('route-map', 'figure')],
     prevent_initial_call=False
 )
-def update_display(selected_trip_id, selected_airports, current_figure):
+def update_display(selected_trip_id, selected_airports, table_data, current_figure):
     ctx = dash.callback_context
     trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else None
     
@@ -664,8 +668,8 @@ def update_display(selected_trip_id, selected_airports, current_figure):
         except (KeyError, TypeError):
             current_view = None
     
-    # Handle no selection or no matching trips
-    if selected_trip_id is None:
+    # Handle no selection, no matching trips, or empty table
+    if selected_trip_id is None or not table_data:
         fig = create_map_figure(None, selected_airports or [], current_view)
         return fig, "No route found within the current selection", "", []
     
@@ -676,14 +680,12 @@ def update_display(selected_trip_id, selected_airports, current_figure):
         fig = create_map_figure(None, selected_airports or [], current_view)
         return fig, "Selected trip not found", "", []
     
-    # Create map - only if trip changed or airports changed
-    if trigger in ['selected-trip-id.data', 'selected-airports.data']:
+    # Always update everything if:
+    # 1. Trip ID changed
+    # 2. Airports changed
+    # 3. Table data changed (meaning filters changed)
+    if trigger in ['selected-trip-id.data', 'selected-airports.data', 'summary-table.data']:
         fig = create_map_figure(selected_trip, selected_airports or [], current_view)
-    else:
-        fig = dash.no_update
-    
-    # Create summary - only if trip changed
-    if trigger == 'selected-trip-id.data':
         summary_content = html.Div([
             html.H3("Trip Summary"),
             html.P(f"Total Cost: ${selected_trip['total_cost']:.2f}"),
@@ -692,12 +694,11 @@ def update_display(selected_trip_id, selected_airports, current_figure):
             html.P(f"Return: {selected_trip['return_time'].strftime('%Y-%m-%d %H:%M')}")
         ])
         
-        # Create details
         details_content = create_trip_details(selected_trip_id)
         
         return fig, selected_trip['route'], summary_content, details_content
     else:
-        return fig, dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 app.clientside_callback(
     """
