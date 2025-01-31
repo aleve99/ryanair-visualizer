@@ -1,0 +1,35 @@
+/* Performance optimizations */
+.map-box {
+    will-change: transform;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+.trip-details {
+    will-change: transform;
+    transform: translateZ(0);
+}
+
+/* Reduce repaints */
+.detail-card {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+/* Optimize scrolling */
+.dash-table-container {
+    will-change: transform;
+    transform: translateZ(0);
+}
+
+/* Prevent layout shifts */
+.dashboard-container {
+    contain: layout size;
+}
+
+/* Optimize animations */
+@media (prefers-reduced-motion: no-preference) {
+    .trip-details {
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+} 

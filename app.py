@@ -9,8 +9,6 @@ import numpy as np
 from dash.exceptions import PreventUpdate
 from functools import lru_cache
 
-from dash_extensions import EventListener
-
 # Constants
 CARD_COLORS = {
     'flight': {'bg': '#e3f2fd', 'border': '#2196f3'},
@@ -121,63 +119,101 @@ def calculate_map_bounds(selected_trip, selected_airports, airports_df):
 
 def create_map_figure(selected_trip, selected_airports=[], current_view=None):
     """Create map figure for a given trip with optimizations"""
-    fig = go.Figure()
+    # Create base traces that will be modified
+    base_traces = []
     
-    # Add all airports with appropriate styling
-    for code, coords in AIRPORT_COORDS.items():
-        marker_color = CARD_COLORS['marker']['default']
-        marker_size = MAP_SETTINGS['marker_sizes']['default']
-        
-        # Always check selected airports first
-        if code in selected_airports:
-            marker_color = CARD_COLORS['marker']['selected']
-            marker_size = MAP_SETTINGS['marker_sizes']['highlighted']
-        # Then check trip-related highlighting if a trip is selected
-        elif selected_trip is not None:
-            route_airports = selected_trip['route'].split('-')
-            trip_stays = stays[stays['trip_id'] == selected_trip['trip_id']]['location'].tolist()
-            
-            if code in trip_stays:
-                marker_color = CARD_COLORS['marker']['stay']
-                marker_size = MAP_SETTINGS['marker_sizes']['highlighted']
-            elif code in route_airports:
-                marker_color = CARD_COLORS['marker']['route']
-                marker_size = MAP_SETTINGS['marker_sizes']['highlighted']
-        
-        fig.add_trace(go.Scattermap(
-            lon=[coords['lng']],
-            lat=[coords['lat']],
-            mode='markers',
-            marker=dict(size=marker_size, color=marker_color),
-            text=f"{AIRPORT_LOCATIONS[code]} ({code})",
-            hoverinfo='text',
-            customdata=[code]
-        ))
-
-    # Add route lines if trip is selected
+    # Pre-calculate marker properties for each state
+    marker_props = {
+        'default': dict(size=MAP_SETTINGS['marker_sizes']['default'], color=CARD_COLORS['marker']['default']),
+        'selected': dict(size=MAP_SETTINGS['marker_sizes']['highlighted'], color=CARD_COLORS['marker']['selected']),
+        'stay': dict(size=MAP_SETTINGS['marker_sizes']['highlighted'], color=CARD_COLORS['marker']['stay']),
+        'route': dict(size=MAP_SETTINGS['marker_sizes']['highlighted'], color=CARD_COLORS['marker']['route'])
+    }
+    
+    # Pre-process trip data if available
+    trip_stays = set()
+    route_airports = []  # Keep as list to maintain order
     if selected_trip is not None:
-        route_airports = selected_trip['route'].split('-')
-        for i in range(len(route_airports)-1):
-            start = airports[airports['code'] == route_airports[i]].iloc[0]
-            end = airports[airports['code'] == route_airports[i+1]].iloc[0]
+        route_airports = selected_trip['route'].split('-')  # Keep as list for order
+        # Get stays using index
+        trip_id = selected_trip.name if hasattr(selected_trip, 'name') else selected_trip['trip_id']
+        if trip_id in stays.index.get_level_values(0):
+            trip_stays = set(stays.loc[trip_id]['location'].tolist())
+    
+    selected_airports = set(selected_airports)  # Convert to set for O(1) lookups
+    route_airports_set = set(route_airports)  # For O(1) lookups
+    
+    # Create a single trace for all airports with different marker properties
+    all_lons, all_lats = [], []
+    all_texts = []
+    all_customdata = []
+    all_markers = []
+    
+    for code, coords in AIRPORT_COORDS.items():
+        all_lons.append(coords['lng'])
+        all_lats.append(coords['lat'])
+        all_texts.append(f"{AIRPORT_LOCATIONS[code]} ({code})")
+        all_customdata.append(code)
+        
+        # Determine marker properties based on airport state
+        if code in selected_airports:
+            marker = marker_props['selected']
+        elif code in trip_stays:
+            marker = marker_props['stay']
+        elif code in route_airports_set:
+            marker = marker_props['route']
+        else:
+            marker = marker_props['default']
+        all_markers.append(marker)
+    
+    # Create a single trace for all airports
+    base_traces.append(go.Scattermap(
+        lon=all_lons,
+        lat=all_lats,
+        mode='markers',
+        marker=dict(
+            size=[m['size'] for m in all_markers],
+            color=[m['color'] for m in all_markers]
+        ),
+        text=all_texts,
+        hoverinfo='text',
+        customdata=all_customdata,
+        name='airports'
+    ))
+    
+    # Add route lines if trip is selected
+    if selected_trip is not None and len(route_airports) > 1:
+        # Create route segments
+        for i in range(len(route_airports) - 1):
+            start_code = route_airports[i]
+            end_code = route_airports[i + 1]
             
-            lons, lats = create_curved_path(start['lng'], start['lat'], end['lng'], end['lat'])
+            start_coords = AIRPORT_COORDS[start_code]
+            end_coords = AIRPORT_COORDS[end_code]
             
-            fig.add_trace(go.Scattermap(
+            lons, lats = create_curved_path(
+                start_coords['lng'], start_coords['lat'],
+                end_coords['lng'], end_coords['lat']
+            )
+            
+            base_traces.append(go.Scattermap(
                 lon=lons,
                 lat=lats,
                 mode='lines',
                 line=dict(width=2, color=CARD_COLORS['marker']['route']),
                 showlegend=False,
-                hoverinfo='skip'
+                hoverinfo='skip',
+                name='route'
             ))
+    
+    fig = go.Figure(data=base_traces)
     
     # Use current view if available, otherwise calculate bounds
     if current_view:
         center_lat, center_lon, zoom = current_view
     else:
         # Calculate bounds based on selected trip and/or airports
-        center_lat, center_lon, zoom = calculate_map_bounds(selected_trip, selected_airports, airports)
+        center_lat, center_lon, zoom = calculate_map_bounds(selected_trip, selected_airports, AIRPORTS_DF)
     
     fig.update_layout(
         map=dict(
@@ -187,7 +223,8 @@ def create_map_figure(selected_trip, selected_airports=[], current_view=None):
         ),
         margin={"r":0,"t":0,"l":0,"b":0},
         showlegend=False,
-        clickmode='event'
+        clickmode='event',
+        uirevision=True  # Keep the view state constant during updates
     )
     
     return fig
@@ -201,25 +238,56 @@ def load_cached_data():
 # Replace direct load_data() call
 airports, fares, stays, summary, trips = load_cached_data()
 
+# Set indexes for faster lookups
+summary.set_index('trip_id', inplace=True)
+stays.set_index(['trip_id', 'position'], inplace=True)
+trips.set_index(['trip_id', 'position'], inplace=True)
+fares.set_index('key', inplace=True)
+airports.set_index('code', inplace=True)
+
 # Pre-calculate commonly used data
-AIRPORT_LOCATIONS = dict(zip(airports['code'], airports['location']))
-AIRPORT_COORDS = airports.set_index('code')[['lat', 'lng']].to_dict('index')
+AIRPORT_LOCATIONS = airports['location'].to_dict()
+AIRPORT_COORDS = airports[['lat', 'lng']].to_dict('index')
+AIRPORTS_DF = airports.reset_index()  # Keep a copy with the index as a column
 
-# Initialize the Dash app
-app = dash.Dash(__name__)
+# Initialize the Dash app with performance settings
+app = dash.Dash(
+    __name__,
+    update_title=None,  # Disable "Updating..." title
+    compress=True,  # Enable gzip compression
+    meta_tags=[
+        {"name": "viewport", "content": "width=device-width, initial-scale=1"}
+    ]
+)
 
+@lru_cache(maxsize=32)
 def create_trip_details(trip_id):
-    """Create trip details content for a given trip ID"""
-    trip_stays = stays[stays['trip_id'] == trip_id].sort_values('position')
-    trip_flights = trips[trips['trip_id'] == trip_id].sort_values('position')
+    """Create trip details content for a given trip ID with optimizations"""
+    # Get trip data efficiently using indexes
+    trip_stays = stays.loc[trip_id].sort_values('position') if trip_id in stays.index.get_level_values(0) else pd.DataFrame()
+    trip_flights = trips.loc[trip_id].sort_values('position')
     
     details_content = []
+    
+    # Pre-fetch airport locations to avoid repeated lookups
+    airport_locations = {}
+    all_airports = set()
+    for _, flight in trip_flights.iterrows():
+        flight_key = flight['key']
+        flight_fare = fares.loc[flight_key]
+        all_airports.add(flight_fare['origin'])
+        all_airports.add(flight_fare['destination'])
+    
+    # Use the pre-calculated AIRPORT_LOCATIONS instead of querying the DataFrame
+    airport_locations = {code: AIRPORT_LOCATIONS[code] for code in all_airports}
+    
+    # Create flight and stay cards
     for i in range(len(trip_flights)):
         flight_key = trip_flights.iloc[i]['key']
-        flight_fare = fares[fares['key'] == flight_key].iloc[0]
+        flight_fare = fares.loc[flight_key]
         
-        origin_name = airports[airports['code'] == flight_fare['origin']]['location'].iloc[0]
-        dest_name = airports[airports['code'] == flight_fare['destination']]['location'].iloc[0]
+        origin_name = airport_locations[flight_fare['origin']]
+        dest_name = airport_locations[flight_fare['destination']]
         
         # Create flight booking link
         booking_link = get_one_way_link(
@@ -252,10 +320,10 @@ def create_trip_details(trip_id):
             ], className='detail-card flight-card')
         ])
         
-        # Add stay card if exists
-        if i < len(trip_stays):
+        # Add stay card if exists and we have stays data
+        if not trip_stays.empty and i < len(trip_stays):
             stay = trip_stays.iloc[i]
-            stay_location_name = airports[airports['code'] == stay['location']]['location'].iloc[0]
+            stay_location_name = AIRPORT_LOCATIONS.get(stay['location'], stay['location'])
             details_content.extend([
                 html.Div([
                     html.H4(f"Stay in {stay_location_name}"),
@@ -268,20 +336,23 @@ def create_trip_details(trip_id):
 
 @lru_cache(maxsize=128)
 def get_filtered_trips(filter_airports_tuple):
-    """Cache filtered trips results"""
+    """Cache filtered trips results with optimized filtering"""
     if not filter_airports_tuple:
         return summary
-        
-    filtered_trips = summary.copy()
-    for airport in filter_airports_tuple:
-        filtered_trips = filtered_trips[filtered_trips['route'].str.contains(airport)]
-    return filtered_trips
+    
+    # Convert filter_airports to set for O(1) lookups
+    filter_airports = set(filter_airports_tuple)
+    
+    # Use vectorized operations for filtering
+    mask = summary['route'].apply(lambda x: all(airport in x for airport in filter_airports))
+    return summary[mask]
 
 def get_table_data(page=0, filter_airports=None):
     """Optimized table data retrieval"""
     # Convert filter_airports list to tuple for caching
     filter_airports_tuple = tuple(sorted(filter_airports)) if filter_airports else ()
     
+    # Get filtered data using cached function
     filtered_trips = get_filtered_trips(filter_airports_tuple)
     
     # If no data matches the filter, return empty data
@@ -296,22 +367,29 @@ def get_table_data(page=0, filter_airports=None):
     end_idx = start_idx + PAGE_SIZE
     page_data = filtered_trips.iloc[start_idx:end_idx]
 
-    # Format data for table using list comprehension
-    table_data = [{
-        'route': row['route'],
-        'total_cost': row['total_cost'],
-        'departure_date': row['departure_time'].strftime('%Y-%m-%d'),
-        'return_date': row['return_time'].strftime('%Y-%m-%d'),
-        'duration_days': calculate_duration_days(row),
-        'trip_id': row['trip_id']
-    } for _, row in page_data.iterrows()]
+    # Reset index to get trip_id as a column and use pandas operations for formatting
+    table_data = (
+        page_data
+        .reset_index()  # This brings trip_id back as a column
+        [['route', 'total_cost', 'departure_time', 'return_time', 'trip_id']]
+        .assign(
+            departure_date=lambda df: df['departure_time'].dt.strftime('%Y-%m-%d'),
+            return_date=lambda df: df['return_time'].dt.strftime('%Y-%m-%d'),
+            duration_days=lambda df: (df['return_time'] - df['departure_time']).dt.days
+        )
+        .drop(['departure_time', 'return_time'], axis=1)
+        .to_dict('records')
+    )
 
     return table_data, total_rows
 
 # Initial data for first page
 initial_data, total_rows = get_table_data(page=0)
-initial_trip = summary.iloc[0]  # Get the first trip for initial display
-initial_details = create_trip_details(initial_trip['trip_id'])
+
+# Get the first trip for initial display
+initial_trip_id = summary.index[0]  # Get first trip_id from index
+initial_trip = summary.loc[initial_trip_id]  # Get trip data using index
+initial_details = create_trip_details(initial_trip_id)
 initial_summary = html.Div([
     html.H3("Trip Summary"),
     html.P(f"Total Cost: ${initial_trip['total_cost']:.2f}"),
@@ -326,7 +404,7 @@ initial_map = create_map_figure(initial_trip)
 # Define the layout with initial values
 app.layout = html.Div([
     dcc.Store(id='selected-airports', data=[]),
-    dcc.Store(id='selected-trip-id', data=initial_trip['trip_id']),  # Set initial trip_id
+    dcc.Store(id='selected-trip-id', data=initial_trip_id),  # Set initial trip_id
 
     # Title Container
     html.Div([
@@ -471,12 +549,12 @@ def update_selected_airports(click_data, keyboard_state, current_selection, last
         'n_clicks': last_click['n_clicks'] + 1
     }
 
-    # Create filter text to display:
+    # Create filter text to display using pre-calculated AIRPORT_LOCATIONS:
     if not current_selection:
         filter_text = "Showing all trips"
     else:
         airport_names = [
-            f"{airports[airports['code'] == code]['location'].iloc[0]} ({code})"
+            f"{AIRPORT_LOCATIONS[code]} ({code})"
             for code in current_selection
         ]
         filter_text = "Filtered by: " + ", ".join(airport_names)
@@ -502,14 +580,18 @@ def update_table_data(selected_airports, page_current):
     reset_page = trigger == 'selected-airports.data'
     page_to_use = 0 if reset_page else (page_current or 0)
     
+    # Get the data
     table_data, total_rows = get_table_data(
         page=page_to_use,
         filter_airports=selected_airports
     )
     page_count = max(1, -(-total_rows // PAGE_SIZE))
     
-    # Return the new page number (0) when filtering, otherwise keep current page
-    return table_data, page_count, 0 if reset_page else dash.no_update
+    # Only update what changed
+    if trigger == 'summary-table.page_current':
+        return table_data, dash.no_update, dash.no_update
+    else:
+        return table_data, page_count, 0 if reset_page else dash.no_update
 
 @app.callback(
     [Output('summary-table', 'selected_rows'),
@@ -564,13 +646,15 @@ def maintain_selection(selected_rows, current_data, selected_airports, page_curr
      Output('trip-summary', 'children'),
      Output('trip-details', 'children')],
     [Input('selected-trip-id', 'data'),
-     Input('selected-airports', 'data'),
-     Input('summary-table', 'page_current')],
+     Input('selected-airports', 'data')],
     [State('route-map', 'figure')],
     prevent_initial_call=False
 )
-def update_display(selected_trip_id, selected_airports, page_current, current_figure):
-    # Get current view
+def update_display(selected_trip_id, selected_airports, current_figure):
+    ctx = dash.callback_context
+    trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else None
+    
+    # Get current view if available
     current_view = None
     if current_figure:
         try:
@@ -586,24 +670,34 @@ def update_display(selected_trip_id, selected_airports, page_current, current_fi
         return fig, "No route found within the current selection", "", []
     
     # Find selected trip
-    selected_trip = summary[summary['trip_id'] == selected_trip_id].iloc[0]
+    try:
+        selected_trip = summary.loc[selected_trip_id]
+    except KeyError:
+        fig = create_map_figure(None, selected_airports or [], current_view)
+        return fig, "Selected trip not found", "", []
     
-    # Create map
-    fig = create_map_figure(selected_trip, selected_airports or [], current_view)
+    # Create map - only if trip changed or airports changed
+    if trigger in ['selected-trip-id.data', 'selected-airports.data']:
+        fig = create_map_figure(selected_trip, selected_airports or [], current_view)
+    else:
+        fig = dash.no_update
     
-    # Create summary
-    summary_content = html.Div([
-        html.H3("Trip Summary"),
-        html.P(f"Total Cost: ${selected_trip['total_cost']:.2f}"),
-        html.P(f"Total Duration: {format_timedelta(selected_trip['total_duration'])}"),
-        html.P(f"Departure: {selected_trip['departure_time'].strftime('%Y-%m-%d %H:%M')}"),
-        html.P(f"Return: {selected_trip['return_time'].strftime('%Y-%m-%d %H:%M')}")
-    ])
-    
-    # Create details
-    details_content = create_trip_details(selected_trip['trip_id'])
-    
-    return fig, selected_trip['route'], summary_content, details_content
+    # Create summary - only if trip changed
+    if trigger == 'selected-trip-id.data':
+        summary_content = html.Div([
+            html.H3("Trip Summary"),
+            html.P(f"Total Cost: ${selected_trip['total_cost']:.2f}"),
+            html.P(f"Total Duration: {format_timedelta(selected_trip['total_duration'])}"),
+            html.P(f"Departure: {selected_trip['departure_time'].strftime('%Y-%m-%d %H:%M')}"),
+            html.P(f"Return: {selected_trip['return_time'].strftime('%Y-%m-%d %H:%M')}")
+        ])
+        
+        # Create details
+        details_content = create_trip_details(selected_trip_id)
+        
+        return fig, selected_trip['route'], summary_content, details_content
+    else:
+        return fig, dash.no_update, dash.no_update, dash.no_update
 
 app.clientside_callback(
     """
