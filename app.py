@@ -152,7 +152,9 @@ def create_map_figure(selected_trip, selected_airports=[], current_view=None):
     for code, coords in AIRPORT_COORDS.items():
         all_lons.append(coords['lng'])
         all_lats.append(coords['lat'])
-        all_texts.append(f"{AIRPORT_LOCATIONS[code]} ({code})")
+        # Different hover text based on whether airport is already selected
+        ctrl_action = "Ctrl+Click to remove from filter" if code in selected_airports else "Ctrl+Click to add to filter"
+        all_texts.append(f"{AIRPORT_LOCATIONS[code]} ({code})<br>Click to filter<br>{ctrl_action}")
         all_customdata.append(code)
         
         # Determine marker properties based on airport state
@@ -178,7 +180,7 @@ def create_map_figure(selected_trip, selected_airports=[], current_view=None):
         text=all_texts,
         hoverinfo='text',
         customdata=all_customdata,
-        name='airports'
+        below='',
     ))
     
     # Add route lines if trip is selected
@@ -733,38 +735,6 @@ app.clientside_callback(
     [State('trip-details', 'style')]
 )
 
-def no_data_figure():
-    """Create a map figure with all airports when no trip is selected"""
-    fig = go.Figure()
-    
-    # Add all airports with default styling
-    for code, coords in AIRPORT_COORDS.items():
-        fig.add_trace(go.Scattermap(
-            lon=[coords['lng']],
-            lat=[coords['lat']],
-            mode='markers',
-            marker=dict(
-                size=MAP_SETTINGS['marker_sizes']['default'],
-                color=CARD_COLORS['marker']['default']
-            ),
-            text=f"{AIRPORT_LOCATIONS[code]} ({code})",
-            hoverinfo='text',
-            customdata=[code]
-        ))
-    
-    # Set default view of Europe
-    fig.update_layout(
-        map=dict(
-            style=MAP_SETTINGS['style'],
-            zoom=4,
-            center=dict(lat=48.8566, lon=2.3522)  # Center on Paris
-        ),
-        margin={"r":0,"t":0,"l":0,"b":0},
-        showlegend=False,
-        clickmode='event'
-    )
-    
-    return fig
 
 # Add this to improve initial load performance
 app.config.suppress_callback_exceptions = True
