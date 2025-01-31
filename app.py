@@ -9,6 +9,8 @@ import numpy as np
 from dash.exceptions import PreventUpdate
 from functools import lru_cache
 
+from dash_extensions import EventListener
+
 # Constants
 CARD_COLORS = {
     'flight': {'bg': '#e3f2fd', 'border': '#2196f3'},
@@ -325,7 +327,7 @@ initial_map = create_map_figure(initial_trip)
 app.layout = html.Div([
     dcc.Store(id='selected-airports', data=[]),
     dcc.Store(id='selected-trip-id', data=initial_trip['trip_id']),  # Set initial trip_id
-    
+
     # Title Container
     html.Div([
         html.H1("Flight Trip Explorer", className='dashboard-title')
@@ -337,6 +339,8 @@ app.layout = html.Div([
         html.Div([
             # Map Container
             html.Div([
+                dcc.Store(id='keyboard-state', data={'ctrl': False}),
+                html.Div(id='key-listener', style={'display': 'none'}),  # Hidden div for key events
                 dcc.Graph(
                     id='route-map',
                     figure=initial_map,
@@ -418,45 +422,61 @@ app.layout = html.Div([
 ], className='dashboard-container')
 
 @app.callback(
-    [Output('selected-airports', 'data'),
-     Output('filter-info', 'children'),
-     Output('last-click-state', 'data'),
-     Output('route-map', 'clickData')],
+    [
+        Output('selected-airports', 'data'),
+        Output('filter-info', 'children'),
+        Output('last-click-state', 'data'),
+        Output('route-map', 'clickData'),
+    ],
     [Input('route-map', 'clickData')],
-    [State('selected-airports', 'data'),
-     State('last-click-state', 'data')],
+    [
+        State('keyboard-state', 'data'),
+        State('selected-airports', 'data'),
+        State('last-click-state', 'data')
+    ],
     prevent_initial_call=True
 )
-def update_selected_airports(clickData, current_selection, last_click):
-    if clickData is None:
+def update_selected_airports(click_data, keyboard_state, current_selection, last_click):
+    # Debug prints
+    print("Click Data:", click_data)
+    print("Keyboard State:", keyboard_state)
+
+    # If the user clicked outside any point (no customdata), do nothing:
+    if not click_data or "points" not in click_data or not click_data["points"]:
         raise PreventUpdate
-        
-    clicked_airport = clickData['points'][0]['customdata']
-    
-    # Initialize current_selection if None
-    current_selection = [] if current_selection is None else current_selection.copy()
+
+    clicked_airport = click_data["points"][0]["customdata"]
+    if not clicked_airport:
+        raise PreventUpdate
+
+    # Get ctrl state from keyboard state
+    ctrl_pressed = keyboard_state.get('ctrl', False) if keyboard_state else False
+    print("Ctrl pressed:", ctrl_pressed)
+
+    # Copy the current selections if not None:
+    if current_selection is None:
+        current_selection = []
+
+    # We keep track of the last-clicked airport to reuse your existing logic:
     last_click = last_click or {'airport': None, 'n_clicks': 0}
-    
-    # Check if this is a new click on the same airport
-    is_same_airport = clicked_airport == last_click.get('airport')
-    
-    # Toggle logic
-    if is_same_airport:
-        if clicked_airport in current_selection:
-            current_selection.remove(clicked_airport)
-    else:
+
+    if ctrl_pressed:
+        # --- CTRL + CLICK mode: Toggle that airport ---
         if clicked_airport in current_selection:
             current_selection.remove(clicked_airport)
         else:
             current_selection.append(clicked_airport)
-    
-    # Update click state
+    else:
+        # --- NORMAL CLICK mode: Replace with only that airport ---
+        current_selection = [clicked_airport]
+
+    # Update last-click info
     new_click_state = {
         'airport': clicked_airport,
         'n_clicks': last_click['n_clicks'] + 1
     }
-    
-    # Create filter info text
+
+    # Create filter text to display:
     if not current_selection:
         filter_text = "Showing all trips"
     else:
@@ -465,7 +485,9 @@ def update_selected_airports(clickData, current_selection, last_click):
             for code in current_selection
         ]
         filter_text = "Filtered by: " + ", ".join(airport_names)
-            
+
+    # Return the updated selection info.
+    # We set map clickData to None if you want subsequent identical clicks to register again
     return current_selection, filter_text, new_click_state, None
 
 @app.callback(
@@ -656,6 +678,63 @@ def no_data_figure():
 
 # Add this to improve initial load performance
 app.config.suppress_callback_exceptions = True
+
+# Replace the interval-based callback with these two callbacks
+app.clientside_callback(
+    """
+    function(n_clicks) {
+        if (!window.keyListenersAdded) {
+            window.ctrlPressed = false;
+            window.keyTrigger = null;
+            
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Control' && !window.ctrlPressed) {
+                    window.ctrlPressed = true;
+                    if (window.keyTrigger) window.keyTrigger();
+                }
+            });
+            
+            document.addEventListener('keyup', (e) => {
+                if (e.key === 'Control' && window.ctrlPressed) {
+                    window.ctrlPressed = false;
+                    if (window.keyTrigger) window.keyTrigger();
+                }
+            });
+            
+            window.addEventListener('blur', () => {
+                if (window.ctrlPressed) {
+                    window.ctrlPressed = false;
+                    if (window.keyTrigger) window.keyTrigger();
+                }
+            });
+            
+            window.keyListenersAdded = true;
+        }
+        
+        // Return a dummy value to satisfy Dash
+        return window.performance.now();
+    }
+    """,
+    Output('key-listener', 'n_clicks'),
+    [Input('route-map', 'figure')]  # Initialize when the map is created
+)
+
+app.clientside_callback(
+    """
+    function(n_clicks) {
+        // Set up the trigger for keyboard state updates
+        window.keyTrigger = () => {
+            if (document.getElementById('key-listener')) {
+                document.getElementById('key-listener').click();
+            }
+        };
+        
+        return {'ctrl': window.ctrlPressed || false};
+    }
+    """,
+    Output('keyboard-state', 'data'),
+    [Input('key-listener', 'n_clicks')]
+)
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port="8050", debug=False)
