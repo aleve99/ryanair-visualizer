@@ -735,7 +735,6 @@ app.clientside_callback(
     [State('trip-details', 'style')]
 )
 
-
 # Add this to improve initial load performance
 app.config.suppress_callback_exceptions = True
 

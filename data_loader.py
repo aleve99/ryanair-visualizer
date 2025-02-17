@@ -42,24 +42,26 @@ def load_data():
     
     fares = pd.read_csv(
         'data/fares.csv', 
-        dtype=fares_dtypes,
-        parse_dates=['dep_time', 'arr_time'],
-        date_format='%Y-%m-%d %H:%M:%S'
+        dtype=fares_dtypes
     )
+    # Convert timestamp columns after loading
+    fares['dep_time'] = pd.to_datetime(fares['dep_time'], unit='s')
+    fares['arr_time'] = pd.to_datetime(fares['arr_time'], unit='s')
     
     stays = pd.read_csv(
         'data/stays.csv', 
         dtype=stays_dtypes,
-        converters={'duration': pd.to_timedelta}
+        converters={'duration': lambda x: pd.Timedelta(seconds=float(x))}
     )
     
     summary = pd.read_csv(
         'data/summary.csv', 
-        dtype=summary_dtypes,
-        parse_dates=['departure_time', 'return_time'],
-        date_format='%Y-%m-%d %H:%M:%S',
-        converters={'total_duration': pd.to_timedelta}
+        dtype=summary_dtypes
     )
+    # Convert timestamp columns after loading
+    summary['departure_time'] = pd.to_datetime(summary['departure_time'], unit='s')
+    summary['return_time'] = pd.to_datetime(summary['return_time'], unit='s')
+    summary['total_duration'] = summary['total_duration'].apply(lambda x: pd.Timedelta(seconds=float(x)))
     
     trips = pd.read_csv('data/trips.csv', dtype=trips_dtypes)
     
